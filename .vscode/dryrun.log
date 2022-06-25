@@ -1,0 +1,12 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/root/6.824'
+Checking that your submission builds correctly...
+ 
+unknown lab: Makefile
+make: *** [Makefile:47: check-Makefile] Error 1
+make: Failed to remake makefile 'Makefile'.
+make: *** No targets specified and no makefile found.  Stop.
+
+rm check-Makefile
+make: Leaving directory '/root/6.824'
+ 

@@ -72,6 +72,8 @@ func main() {
 			j++
 		}
 		values := []string{}
+		// values存储个数，在reducef中直接根据长度判断value
+		// 应该是为了后面MR的实现搭框架，否则有些多此一举
 		for k := i; k < j; k++ {
 			values = append(values, intermediate[k].Value)
 		}

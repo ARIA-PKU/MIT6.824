@@ -14,6 +14,7 @@ type KeyValue struct {
 	Value string
 }
 
+
 //
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
@@ -24,6 +25,19 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+func doHeartbeat() *HeartBeatsResponse {
+	response := HeartBeatsResponse{}
+	call("master.HeartBeat", &HeartBeatRequest{}, &response)
+	return &response
+}
+
+func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatsResponse) {
+	fmt.Printf("%v", response.FilePath)
+}
+
+func doReduceTask(reducef func(string, []string) string, response *HeartBeatsResponse) {
+	fmt.Printf("%v", response.FilePath)
+}
 
 //
 // main/mrworker.go calls this function.
@@ -31,10 +45,18 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	// Your worker implementation here.
-
-	// uncomment to send the Example RPC to the master.
-	// CallExample()
+	for {
+		response := doHeartbeat()
+		fmt.Printf("%v", response)
+		switch response.WorkType {
+		case "MapWork":
+			doMapTask(mapf, response)
+		case "ReduceWork":
+			doReduceTask(reducef, response)
+		default:
+			fmt.Printf("notDefined Work")
+		}
+	}
 
 }
 
@@ -43,23 +65,23 @@ func Worker(mapf func(string, string) []KeyValue,
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
-func CallExample() {
+// func CallExample() {
 
-	// declare an argument structure.
-	args := ExampleArgs{}
+// 	// declare an argument structure.
+// 	args := ExampleArgs{}
 
-	// fill in the argument(s).
-	args.X = 99
+// 	// fill in the argument(s).
+// 	args.X = 99
 
-	// declare a reply structure.
-	reply := ExampleReply{}
+// 	// declare a reply structure.
+// 	reply := ExampleReply{}
 
-	// send the RPC request, wait for the reply.
-	call("Master.Example", &args, &reply)
+// 	// send the RPC request, wait for the reply.
+// 	call("Master.Example", &args, &reply)
 
-	// reply.Y should be 100.
-	fmt.Printf("reply.Y %v\n", reply.Y)
-}
+// 	// reply.Y should be 100.
+// 	fmt.Printf("reply.Y %v\n", reply.Y)
+// }
 
 //
 // send an RPC request to the master, wait for the response.

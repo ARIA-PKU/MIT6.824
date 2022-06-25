@@ -5,11 +5,28 @@ import "net"
 import "os"
 import "net/rpc"
 import "net/http"
+import "time"
+// import "fmt"
 
+type (
+	TaskStatus uint8
+	OperationPhase string
+)
+
+type Task struct {
+	fileName string
+	id int
+	startTime time.Time
+	status TaskStatus
+}
 
 type Master struct {
 	// Your definitions here.
-
+	files []string
+	nReduce int
+	nMap int
+	phase OperationPhase
+	tasks []Task
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -19,10 +36,10 @@ type Master struct {
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
-func (m *Master) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
-	return nil
-}
+// func (m *Master) Example(args *ExampleArgs, reply *ExampleReply) error {
+// 	reply.Y = args.X + 1
+// 	return nil
+// }
 
 
 //
@@ -60,11 +77,24 @@ func (m *Master) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeMaster(files []string, nReduce int) *Master {
-	m := Master{}
+	m := Master{
+		files: files,
+		nReduce: nReduce,
+		nMap: len(files),
+	}
 
 	// Your code here.
-
+	// fmt.Printf("%v", files)
 
 	m.server()
+	m.phase = "MapWork"
+	m.tasks = make([]Task, len(m.files))
+	for idx, file := m.files {
+		m.task[idx] = {
+			fileName: file,
+			id: idx,
+		}
+	}
+	
 	return &m
 }
