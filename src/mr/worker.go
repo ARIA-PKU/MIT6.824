@@ -25,18 +25,20 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-func doHeartbeat() *HeartBeatsResponse {
-	response := HeartBeatsResponse{}
-	call("master.HeartBeat", &HeartBeatRequest{}, &response)
+func doHeartbeat() *HeartBeatResponse {
+	response := HeartBeatResponse{}
+	fmt.Println("start heartbeat")
+	call("Master.HeartBeat", &HeartBeatRequest{}, &response)
+	fmt.Println("finish heartbeat")
 	return &response
 }
 
-func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatsResponse) {
-	fmt.Printf("%v", response.FilePath)
+func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatResponse) {
+	fmt.Printf("do map task, filepath:%v", response.FilePath)
 }
 
-func doReduceTask(reducef func(string, []string) string, response *HeartBeatsResponse) {
-	fmt.Printf("%v", response.FilePath)
+func doReduceTask(reducef func(string, []string) string, response *HeartBeatResponse) {
+	fmt.Printf("do reduce task, filepath:%v", response.FilePath)
 }
 
 //
@@ -49,9 +51,9 @@ func Worker(mapf func(string, string) []KeyValue,
 		response := doHeartbeat()
 		fmt.Printf("%v", response)
 		switch response.WorkType {
-		case "MapWork":
+		case Map:
 			doMapTask(mapf, response)
-		case "ReduceWork":
+		case Reduce:
 			doReduceTask(reducef, response)
 		default:
 			fmt.Printf("notDefined Work")

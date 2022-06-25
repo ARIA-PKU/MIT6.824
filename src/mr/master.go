@@ -6,13 +6,9 @@ import "os"
 import "net/rpc"
 import "net/http"
 import "time"
-// import "fmt"
+import "fmt"
 
-type (
-	TaskStatus uint8
-	OperationPhase string
-)
-
+// definetion of data structure
 type Task struct {
 	fileName string
 	id int
@@ -27,19 +23,69 @@ type Master struct {
 	nMap int
 	phase OperationPhase
 	tasks []Task
+
+	heartbeatCh chan heartbeatMsg
+}
+
+type heartbeatMsg struct {
+	response *HeartBeatResponse
+	ok chan struct{}
+}
+
+func (m *Master) arrangeTask(response *HeartBeatResponse) bool {
+	TaskFinished := true
+	
+	for idx, task := range m.tasks {
+		fmt.Printf("%v ", task.status)
+		switch task.status {
+		case Idle:
+			fmt.Printf("%v\n", task.fileName)
+			fmt.Printf("%v\n", m.phase)
+			TaskFinished = false
+			m.tasks[idx].status, m.tasks[idx].startTime = Working, time.Now()
+			response.NReduce, response.Id = m.nReduce, idx
+			if m.phase == MapPhase {
+				response.WorkType, response.FilePath = Map, task.fileName
+			} else {
+
+			}
+		default:
+		}
+	
+	}
+	return TaskFinished
+}
+
+// 
+func (m *Master) process() {
+	for {
+		msg := <-m.heartbeatCh
+		
+		if m.phase == CompletedPhase {
+			fmt.Println("master completed")
+			msg.response.WorkType = Completed
+		} else if m.arrangeTask(msg.response) {
+			fmt.Printf("master phase: %v\n", m.phase)
+			switch m.phase {
+			case MapPhase:
+				fmt.Printf("map finished")
+				msg.response.WorkType = Completed
+			}
+		}
+		msg.ok <- struct{}{}
+	}
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
-// an example RPC handler.
-//
 // the RPC argument and reply types are defined in rpc.go.
-//
-// func (m *Master) Example(args *ExampleArgs, reply *ExampleReply) error {
-// 	reply.Y = args.X + 1
-// 	return nil
-// }
+
+func (m *Master) HeartBeat(request *HeartBeatRequest, response *HeartBeatResponse) error {
+	msg := heartbeatMsg{response, make(chan struct{})}
+	m.heartbeatCh<-msg
+	<-msg.ok
+	return nil
+}
 
 
 //
@@ -81,20 +127,23 @@ func MakeMaster(files []string, nReduce int) *Master {
 		files: files,
 		nReduce: nReduce,
 		nMap: len(files),
+		heartbeatCh: make(chan heartbeatMsg),
 	}
 
-	// Your code here.
-	// fmt.Printf("%v", files)
-
 	m.server()
-	m.phase = "MapWork"
+
+	// init work with 'map' state
+	m.phase = MapPhase
 	m.tasks = make([]Task, len(m.files))
-	for idx, file := m.files {
-		m.task[idx] = {
+	for idx, file := range m.files {
+		m.tasks[idx] = Task{
 			fileName: file,
 			id: idx,
+			status: Idle,
 		}
 	}
 	
+	go m.process()
+
 	return &m
 }

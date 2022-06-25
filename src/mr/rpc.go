@@ -8,6 +8,7 @@ package mr
 
 import "os"
 import "strconv"
+import "fmt"
 
 //
 // example to show how to declare the arguments
@@ -17,12 +18,23 @@ import "strconv"
 type HeartBeatRequest struct {
 }
 
-type HeartBeatsResponse struct {
+type HeartBeatResponse struct {
 	FilePath string
-	WorkType string
+	WorkType WorkType
 	NReduce int
 	Nmap int
 	Id int
+}
+
+func (response HeartBeatResponse) String() string {
+	switch response.WorkType {
+	case Map:
+		return fmt.Sprintf("{JobType:%v,FilePath:%v,Id:%v,NReduce:%v}", response.WorkType, response.FilePath, response.Id, response.NReduce)
+	case Reduce:
+		// return fmt.Sprintf("{JobType:%v,Id:%v,NMap:%v,NReduce:%v}", response.WorkType, response.Id, response.NMap, response.NReduce)
+	
+	}
+	panic(fmt.Sprintf("unexpected JobType %d", response.WorkType))
 }
 
 // Add your RPC definitions here.
