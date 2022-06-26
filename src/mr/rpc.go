@@ -8,12 +8,15 @@ package mr
 
 import "os"
 import "strconv"
-import "fmt"
+// import "fmt"
 
 //
 // example to show how to declare the arguments
 // and reply for an RPC.
 //
+
+
+// Add your RPC definitions here.
 
 type HeartBeatRequest struct {
 }
@@ -26,19 +29,13 @@ type HeartBeatResponse struct {
 	Id int
 }
 
-func (response HeartBeatResponse) String() string {
-	switch response.WorkType {
-	case Map:
-		return fmt.Sprintf("{JobType:%v,FilePath:%v,Id:%v,NReduce:%v}", response.WorkType, response.FilePath, response.Id, response.NReduce)
-	case Reduce:
-		// return fmt.Sprintf("{JobType:%v,Id:%v,NMap:%v,NReduce:%v}", response.WorkType, response.Id, response.NMap, response.NReduce)
-	
-	}
-	panic(fmt.Sprintf("unexpected JobType %d", response.WorkType))
+type ResponseRequest struct{
+	Id int
+	phase OperationPhase
 }
 
-// Add your RPC definitions here.
-
+type ResponseResponse struct{
+}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the master.

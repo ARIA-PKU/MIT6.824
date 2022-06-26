@@ -6,7 +6,7 @@ type TaskStatus uint8
 const (
 	Idle TaskStatus = iota
 	Working
-	Finshed
+	Finished
 )
 
 type OperationPhase uint8
@@ -22,5 +22,6 @@ type WorkType uint8
 const (
 	Map WorkType = iota
 	Reduce
+	Wait
 	Completed
 )

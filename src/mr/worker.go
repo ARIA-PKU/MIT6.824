@@ -4,7 +4,7 @@ import "fmt"
 import "log"
 import "net/rpc"
 import "hash/fnv"
-
+import "time"
 
 //
 // Map functions return a slice of KeyValue.
@@ -27,18 +27,24 @@ func ihash(key string) int {
 
 func doHeartbeat() *HeartBeatResponse {
 	response := HeartBeatResponse{}
-	fmt.Println("start heartbeat")
+	
 	call("Master.HeartBeat", &HeartBeatRequest{}, &response)
-	fmt.Println("finish heartbeat")
+	
 	return &response
 }
 
+// return task results
+func doResponseMaster(id int, phase OperationPhase) {
+	call("Master.ReceiveResponse", &ResponseRequest{id, phase}, &ResponseResponse{})
+}
+
 func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatResponse) {
-	fmt.Printf("do map task, filepath:%v", response.FilePath)
+	fmt.Printf("do map task, filepath:%v\n", response.FilePath)
+	doResponseMaster(response.Id, MapPhase)
 }
 
 func doReduceTask(reducef func(string, []string) string, response *HeartBeatResponse) {
-	fmt.Printf("do reduce task, filepath:%v", response.FilePath)
+	fmt.Printf("do reduce task, filepath:%v\n", response.FilePath)
 }
 
 //
@@ -49,12 +55,16 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	for {
 		response := doHeartbeat()
-		fmt.Printf("%v", response)
+		fmt.Printf("%v", response.WorkType)
 		switch response.WorkType {
 		case Map:
 			doMapTask(mapf, response)
 		case Reduce:
 			doReduceTask(reducef, response)
+		case Wait:
+			time.Sleep(time.Second)
+		case Completed:
+			return
 		default:
 			fmt.Printf("notDefined Work")
 		}
