@@ -1,10 +1,17 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-import "time"
+import (
+	"fmt"
+ 	"log"
+	"net/rpc"
+ 	"hash/fnv"
+ 	"time"
+ 	"sync"
+ 	"os"
+ 	"io/ioutil"
+ 	"bytes"
+ 	"encoding/json"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -40,6 +47,48 @@ func doResponseMaster(id int, phase OperationPhase) {
 
 func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatResponse) {
 	fmt.Printf("do map task, filepath:%v\n", response.FilePath)
+
+	// read content from file
+	filename := response.FilePath
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot open %v", filename)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read %v", filename)
+	}
+	file.Close()
+	intermediates := make([][]KeyValue, response.NReduce)
+	kva := mapf(filename, string(content))
+	for _, kv := range kva {
+		idx := ihash(kv.Key) % response.NReduce
+		intermediates[idx] = append(intermediates[idx], kv)
+	}
+
+	// store the content
+	var wg sync.WaitGroup
+	for idx, intermediate := range intermediates {
+		wg.Add(1)
+		go func(idx int, intermediate []KeyValue) {
+			defer wg.Done()
+			storeFilePath := generateMapFilePath(response.Id, idx)
+					
+			var buf bytes.Buffer
+			enc := json.NewEncoder(&buf)
+			for _, kv := range intermediate {
+				// fmt.Printf("%v\n", kv)
+			  	err := enc.Encode(&kv)
+			 	if err != nil {
+					fmt.Printf("cannot encode: %v", kv)
+				}
+			}
+			atomicWriteFile(storeFilePath, &buf)
+		
+		}(idx, intermediate)
+	}
+	wg.Wait()
+
 	doResponseMaster(response.Id, MapPhase)
 }
 
@@ -66,7 +115,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		case Completed:
 			return
 		default:
-			fmt.Printf("notDefined Work")
+			fmt.Printf("not Defined Work")
 		}
 	}
 
