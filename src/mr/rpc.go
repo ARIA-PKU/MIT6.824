@@ -31,7 +31,7 @@ type HeartBeatResponse struct {
 
 type ResponseRequest struct{
 	Id int
-	phase OperationPhase
+	Phase OperationPhase
 }
 
 type ResponseResponse struct{

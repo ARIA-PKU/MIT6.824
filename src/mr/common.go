@@ -1,4 +1,5 @@
 package mr
+
 // restore some common values and usages
 import (
 	"fmt"
@@ -6,6 +7,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
+)
+
+const (
+	MaxTaskTime = time.Second * 10
 )
 
 type TaskStatus uint8
@@ -37,6 +43,11 @@ const (
 // generate the name like mr-X-Y, where X is the Map task number, and Y is the reduce task number.
 func generateMapFilePath(mapNumber, reduceNumber int) string {
 	return fmt.Sprintf("mr-%v-%v", mapNumber, reduceNumber)
+}
+
+//  the output of the X'th reduce task in the file mr-out-X
+func generateReduceFilePath(reduceNumber int) string {
+	return fmt.Sprintf("mr-out-%v", reduceNumber)
 }
 
 // store content to file atomically

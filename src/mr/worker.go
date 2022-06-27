@@ -21,7 +21,6 @@ type KeyValue struct {
 	Value string
 }
 
-
 //
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
@@ -42,11 +41,12 @@ func doHeartbeat() *HeartBeatResponse {
 
 // return task results
 func doResponseMaster(id int, phase OperationPhase) {
+	log.Printf("current phase: %v\n", phase)
 	call("Master.ReceiveResponse", &ResponseRequest{id, phase}, &ResponseResponse{})
 }
 
 func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatResponse) {
-	fmt.Printf("do map task, filepath:%v\n", response.FilePath)
+	log.Printf("do map task, filepath:%v\n", response.FilePath)
 
 	// read content from file
 	filename := response.FilePath
@@ -77,10 +77,10 @@ func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatResponse
 			var buf bytes.Buffer
 			enc := json.NewEncoder(&buf)
 			for _, kv := range intermediate {
-				// fmt.Printf("%v\n", kv)
+				// log.Printf("%v\n", kv)
 			  	err := enc.Encode(&kv)
 			 	if err != nil {
-					fmt.Printf("cannot encode: %v", kv)
+					log.Printf("cannot encode: %v", kv)
 				}
 			}
 			atomicWriteFile(storeFilePath, &buf)
@@ -93,7 +93,36 @@ func doMapTask(mapf func(string, string) []KeyValue, response *HeartBeatResponse
 }
 
 func doReduceTask(reducef func(string, []string) string, response *HeartBeatResponse) {
-	fmt.Printf("do reduce task, filepath:%v\n", response.FilePath)
+	log.Printf("do reduce task, reduce id is :%v\n", response.Id)
+
+	results := make(map[string][]string)
+	for i := 0; i < response.Nmap; i ++ {
+		filePath := generateMapFilePath(i, response.Id)
+		file, err := os.Open(filePath)
+		if err != nil {
+			log.Printf("cannot open %v\n", filePath)
+		}
+		dec := json.NewDecoder(file)
+		for {
+		  var kv KeyValue
+		  if err := dec.Decode(&kv); err != nil {
+			break
+		  }
+		  results[kv.Key] = append(results[kv.Key], kv.Value)
+		}
+		file.Close()
+	}
+
+	var buf bytes.Buffer
+	for k, v := range results {
+		cnt := reducef(k, v)
+		fmt.Fprintf(&buf, "%v %v\n", k, cnt)
+	}
+	reduceFileName := generateReduceFilePath(response.Id)
+	atomicWriteFile(reduceFileName, &buf)
+	
+	// log.Printf("reduce phase: %v", ReducePhase)
+	doResponseMaster(response.Id, ReducePhase)
 }
 
 //
@@ -104,7 +133,7 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	for {
 		response := doHeartbeat()
-		fmt.Printf("%v", response.WorkType)
+		log.Printf("%v", response.WorkType)
 		switch response.WorkType {
 		case Map:
 			doMapTask(mapf, response)
@@ -115,34 +144,11 @@ func Worker(mapf func(string, string) []KeyValue,
 		case Completed:
 			return
 		default:
-			fmt.Printf("not Defined Work")
+			log.Printf("not Defined Work")
 		}
 	}
 
 }
-
-//
-// example function to show how to make an RPC call to the master.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-// func CallExample() {
-
-// 	// declare an argument structure.
-// 	args := ExampleArgs{}
-
-// 	// fill in the argument(s).
-// 	args.X = 99
-
-// 	// declare a reply structure.
-// 	reply := ExampleReply{}
-
-// 	// send the RPC request, wait for the reply.
-// 	call("Master.Example", &args, &reply)
-
-// 	// reply.Y should be 100.
-// 	fmt.Printf("reply.Y %v\n", reply.Y)
-// }
 
 //
 // send an RPC request to the master, wait for the response.
@@ -163,6 +169,6 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 		return true
 	}
 
-	fmt.Println(err)
+	log.Println(err)
 	return false
 }

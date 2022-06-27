@@ -1,12 +1,14 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
-import "time"
-import "fmt"
+import (
+	"log"
+ 	"net"
+ 	"os"
+ 	"net/rpc"
+ 	"net/http"
+ 	"time"
+ 	// "fmt"
+)
 
 // definetion of data structure
 type Task struct {
@@ -39,11 +41,27 @@ type responseMsg struct {
 	ok chan struct{}
 }
 
+func (m *Master) initReducePhase() {
+	m.phase = ReducePhase
+	m.tasks = make([]Task, m.nReduce)
+	for i:= 0; i < m.nReduce; i ++ {
+		m.tasks[i] = Task{
+			id: i,
+			status: Idle,
+		}
+	}
+}
+
+func (m *Master) initCompletePhase() {
+	m.phase = CompletedPhase
+	m.doneCh<-struct{}{}
+}
+
+
 func (m *Master) arrangeTask(response *HeartBeatResponse) bool {
 	taskFinished, hasNewWork  := true, false
-	
 	for idx, task := range m.tasks {
-		fmt.Printf("%v ", task.status)
+		// log.Printf("%v ", task.status)
 		switch task.status {
 		case Idle:
 			taskFinished, hasNewWork = false, true
@@ -51,11 +69,22 @@ func (m *Master) arrangeTask(response *HeartBeatResponse) bool {
 			response.NReduce, response.Id = m.nReduce, idx
 			if m.phase == MapPhase {
 				response.WorkType, response.FilePath = Map, task.fileName
-			} else {
-
+			} else if m.phase == ReducePhase {
+				response.WorkType, response.Nmap = Reduce, m.nMap
 			}
+		//  if a worker hasn't completed its task in a reasonable amount of time 
+		//  (for this lab, use ten seconds), and give the same task to a different worker.
 		case Working:
-
+			taskFinished = false
+			if time.Now().Sub(task.startTime) > MaxTaskTime {
+				hasNewWork = true
+				response.NReduce, response.Id = m.nReduce, idx
+				if m.phase == MapPhase {
+					response.WorkType, response.FilePath = Map, task.fileName
+				} else if m.phase == ReducePhase {
+					response.WorkType, response.Nmap = Reduce, m.nMap
+				}
+			}	
 		case Finished:
 		}
 		if hasNewWork {
@@ -75,27 +104,30 @@ func (m *Master) process() {
 		// deal with heartbeat condition
 		case msg := <-m.heartbeatCh:
 			if m.phase == CompletedPhase {
-				// fmt.Println("master completed")
 				msg.response.WorkType = Completed
 			} else if m.arrangeTask(msg.response) {
-				fmt.Printf("master phase: %v\n", m.phase)
 				switch m.phase {
 				case MapPhase:
-					fmt.Printf("map finished")
+					log.Printf("map finished")
+					m.initReducePhase()
+					m.arrangeTask(msg.response)
+				case ReducePhase:
+					log.Printf("reduce finished")
+					m.initCompletePhase()
 					msg.response.WorkType = Completed
-					m.phase = CompletedPhase
-					m.doneCh<-struct{}{}
+				default:
+					log.Printf("process go into error phase")
 				}
 			}
 			msg.ok <- struct{}{}
 		case msg := <- m.responseCh:
-			if msg.request.phase == m.phase {
+			log.Printf("current phase is: %v, request phase is: %v\n", m.phase, msg.request.Phase)
+			if msg.request.Phase == m.phase {
 				// log.Printf("Master: Worker has executed task %v \n", msg.request)
 				m.tasks[msg.request.Id].status = Finished
 			}
 			msg.ok <- struct{}{}
 		}
-		
 	}
 }
 
@@ -111,6 +143,7 @@ func (m *Master) HeartBeat(request *HeartBeatRequest, response *HeartBeatRespons
 }
 
 func (m *Master) ReceiveResponse(request *ResponseRequest, response *ResponseResponse) error {
+	log.Printf("request phase: %v\n", request)
 	msg := responseMsg{request, make(chan struct{})}
 	m.responseCh<-msg
 	<-msg.ok
