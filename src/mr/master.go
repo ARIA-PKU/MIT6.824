@@ -7,7 +7,6 @@ import (
  	"net/rpc"
  	"net/http"
  	"time"
- 	// "fmt"
 )
 
 // definetion of data structure
@@ -57,7 +56,8 @@ func (m *Master) initCompletePhase() {
 	m.doneCh<-struct{}{}
 }
 
-
+// arrange the request from worker a selected task and 
+// return has current phase finished or not
 func (m *Master) arrangeTask(response *HeartBeatResponse) bool {
 	taskFinished, hasNewWork  := true, false
 	for idx, task := range m.tasks {
@@ -91,6 +91,7 @@ func (m *Master) arrangeTask(response *HeartBeatResponse) bool {
 			break
 		}
 	}
+	// cannot finish worker, still need to wait for next phase
 	if !hasNewWork {
 		response.WorkType = Wait
 	}
@@ -116,12 +117,13 @@ func (m *Master) process() {
 					m.initCompletePhase()
 					msg.response.WorkType = Completed
 				default:
-					log.Printf("process go into error phase")
+					log.Printf("process go into wrong phase")
 				}
 			}
 			msg.ok <- struct{}{}
 		case msg := <- m.responseCh:
 			log.Printf("current phase is: %v, request phase is: %v\n", m.phase, msg.request.Phase)
+			// must be current phase, or will get into some errors
 			if msg.request.Phase == m.phase {
 				// log.Printf("Master: Worker has executed task %v \n", msg.request)
 				m.tasks[msg.request.Id].status = Finished
