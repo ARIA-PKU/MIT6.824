@@ -23,12 +23,10 @@ import (
 	 "../labrpc"
 	 "time"
 	 "sort"
+	 "bytes"
+	 "../labgob"
 	//  "fmt"
 ) 
-
-// import "bytes"
-// import "../labgob"
-
 
 // return currentTerm and whether this server
 // believes it is the leader.
@@ -42,14 +40,8 @@ func (rf *Raft) GetState() (int, bool) {
 // see paper's Figure 2 for a description of what should be persistent.
 //
 func (rf *Raft) persist() {
-	// Your code here (2C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	data := rf.encodeState()
+	rf.persister.SaveRaftState(data)
 }
 
 
@@ -60,19 +52,20 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (2C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm, votedFor int
+	var logs	[]Entry
+	if d.Decode(&currentTerm) != nil ||
+	   d.Decode(&votedFor) != nil || 
+	   d.Decode(&logs) != nil {
+	  DPrintf("{Node: %v restore failed}", rf.me)
+	} else {
+	  rf.currentTerm = currentTerm
+	  rf.votedFor = votedFor
+	  rf.logs = logs
+	}
 }
 
 func (rf *Raft) ChangeState(state NodeState) {
@@ -108,7 +101,7 @@ func (rf *Raft) startElection() {
 
 	grantedCount := 1
 	rf.votedFor = rf.me
-
+	rf.persist()
 	for peer := range rf.peers {
 		if peer == rf.me {
 			continue
@@ -135,6 +128,7 @@ func (rf *Raft) startElection() {
 						DPrintf("{Node: %v} find larger term as leader {Node: %v} with term: %v in term: %v", rf.me, peer, reply.Term, request.Term)
 						rf.ChangeState(Follower)
 						rf.currentTerm, rf.votedFor = reply.Term, -1
+						rf.persist()
 					}
 				}
 			}
@@ -183,7 +177,7 @@ func (rf *Raft) watchTimer() {
 func (rf *Raft) AppendEntries(request *AppendEntriesRequest, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
+	defer rf.persist()
 	if request.Term < rf.currentTerm {
 		reply.Term, reply.Success = rf.currentTerm, false
 		return
@@ -266,6 +260,7 @@ func (rf *Raft) handleAppendEntriesReply(peer int, request *AppendEntriesRequest
 			if reply.Term > rf.currentTerm {
 				rf.ChangeState(Follower)
 				rf.currentTerm, rf.votedFor = reply.Term, -1
+				rf.persist()
 			} else if reply.Term == rf.currentTerm {
 				rf.nextIndex[peer] = reply.ConflictIndex
 				if reply.ConflictTerm != -1 {
@@ -356,6 +351,7 @@ func (rf *Raft) appendNewEntry(command interface{}) Entry {
 	lastLog := rf.getLastLog()
 	newLog := Entry{lastLog.Index + 1, rf.currentTerm, command}
 	rf.logs = append(rf.logs, newLog)
+	rf.persist()
 	rf.matchIndex[rf.me], rf.nextIndex[rf.me] = newLog.Index, newLog.Index+1
 	return newLog
 }

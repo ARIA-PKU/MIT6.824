@@ -22,6 +22,7 @@ func (rf *Raft) isUpToDate(term, index int) bool {
 func (rf *Raft) RequestVote(request *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.persist()
 	// if currentTerm is larger or has voted for another node, return false
 	if request.Term < rf.currentTerm || (request.Term == rf.currentTerm &&  rf.votedFor != -1 && rf.votedFor != request.CandidateId) {
 		reply.Term, reply.VoteGranted = rf.currentTerm, false

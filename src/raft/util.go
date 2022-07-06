@@ -4,6 +4,8 @@ import (
 	"log"
 	"time"
 	"math/rand"
+	"bytes"
+	"../labgob"
 )
 
 // Debugging
@@ -95,4 +97,14 @@ func Max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (rf *Raft) encodeState() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.logs)
+	data := w.Bytes()
+	return data
 }
