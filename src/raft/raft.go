@@ -22,63 +22,16 @@ import (
 	"sync/atomic"
 	 "../labrpc"
 	 "time"
+	 "sort"
 ) 
 
 // import "bytes"
 // import "../labgob"
 
 
-
-//
-// as each Raft peer becomes aware that successive log entries are
-// committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make(). set
-// CommandValid to true to indicate that the ApplyMsg contains a newly
-// committed log entry.
-//
-// in Lab 3 you'll want to send other kinds of messages (e.g.,
-// snapshots) on the applyCh; at that point you can add fields to
-// ApplyMsg, but set CommandValid to false for these other uses.
-//
-type ApplyMsg struct {
-	CommandValid bool
-	Command      interface{}
-	CommandIndex int
-}
-
-//
-// A Go object implementing a single Raft peer.
-//
-type Raft struct {
-	mu        sync.Mutex          // Lock to protect shared access to this peer's state
-	peers     []*labrpc.ClientEnd // RPC end points of all peers
-	persister *Persister          // Object to hold this peer's persisted state
-	me        int                 // this peer's index into peers[]
-	dead      int32               // set by Kill()
-
-	applyCh			chan ApplyMsg
-	applyCond   	*sync.Cond    // used to wakeup applier goroutine after committing new entries
-	state			NodeState
-	replicatorCond	[]*sync.Cond  // used to signal replicator goroutine to batch replicating entries
-
-	// definition in Figure 2 
-	currentTerm int
-	votedFor    int
-	logs        []Entry
-
-	commitIndex int
-	lastApplied int
-	nextIndex   []int
-	matchIndex  []int
-
-	electionTimer	*time.Timer
-	heartbeatTimer 	*time.Timer
-}
-
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
-
 	return rf.currentTerm, rf.state == Leader
 }
 
@@ -172,7 +125,7 @@ func (rf *Raft) startElection() {
 						if grantedCount > len(rf.peers) / 2 {
 							DPrintf("{Node: %v} receive majority vote in term: %v", rf.me, request.Term)
 							rf.ChangeState(Leader)
-							// todo: do heartbeat
+							rf.BroadcastHeartbeat(true)
 						}
 					} else if reply.Term > rf.currentTerm {
 						DPrintf("{Node: %v} find larger term as leader {Node: %v} with term: %v in term: %v", rf.me, peer, reply.Term, request.Term)
@@ -185,6 +138,21 @@ func (rf *Raft) startElection() {
 	}
 }
 
+func (rf *Raft) BroadcastHeartbeat(isHeartbeat bool) {
+	for peer := range rf.peers {
+		if peer == rf.me {
+			continue
+		}
+		if isHeartbeat {
+			// sync the log and maintain leadership
+			go rf.replicateOneRound(peer)
+		} else {
+			// signal replicator goroutine to send entries
+			rf.replicatorCond[peer].Signal()
+		}
+	}
+}
+
 // watch all timer, choose to do heartbeat or start a new election
 func (rf *Raft) watchTimer() {
 	for rf.killed() == false {
@@ -192,7 +160,7 @@ func (rf *Raft) watchTimer() {
 		case <-rf.heartbeatTimer.C:
 			rf.mu.Lock()
 			if rf.state == Leader {
-				// Todo: replicate entries
+				rf.BroadcastHeartbeat(true)
 				rf.heartbeatTimer.Reset(HeartbeatTimeout())
 			}
 			rf.mu.Unlock()
@@ -208,6 +176,180 @@ func (rf *Raft) watchTimer() {
 	}
 }
 
+func (rf *Raft) AppendEntries(request *AppendEntriesRequest, reply *AppendEntriesReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if request.Term < rf.currentTerm {
+		reply.Term, reply.Success = rf.currentTerm, false
+		return
+	}
+	if request.Term > rf.currentTerm {
+		rf.currentTerm, rf.votedFor = request.Term, -1
+	}
+
+	rf.ChangeState(Follower)
+	rf.electionTimer.Reset(ElectionTimeout())
+
+
+	// drop unexpected logs
+	if request.PrevLogIndex < rf.logs[0].Index {
+		reply.Term, reply.Success = 0, false
+		return
+	}
+
+	// fast back-up
+	if !rf.logMatch(request.PrevLogTerm, request.PrevLogIndex) {
+		reply.Term, reply.Success = rf.currentTerm, false
+		lastIndex := rf.getLastLog().Index
+		if lastIndex < request.PrevLogIndex {
+			reply.ConflictTerm, reply.ConflictIndex = -1, lastIndex + 1
+		} else {
+			firstIndex := rf.logs[0].Index
+			reply.ConflictTerm = rf.logs[request.PrevLogIndex - firstIndex].Term
+			index := request.PrevLogIndex - 1
+			for index >= firstIndex && rf.logs[index - firstIndex].Term == reply.ConflictTerm {
+				index --
+			}
+			reply.ConflictIndex = index
+		}
+		return
+	}
+
+	firstIndex := rf.logs[0].Index
+	for index, entry := range request.Entries {
+		if entry.Index - firstIndex >= len(rf.logs) || rf.logs[entry.Index - firstIndex].Term != entry.Term {
+			rf.logs = cutEntriesSpace(append(rf.logs[:entry.Index - firstIndex], request.Entries[index:]...))
+			break
+		}
+	}
+
+	// change commitIndex and signal gorotinue to execute
+	// commited logs
+	newCommitIndex := Min(request.LeaderCommit, rf.getLastLog().Index)
+	if newCommitIndex > rf.commitIndex {
+		rf.commitIndex = newCommitIndex
+		rf.applyCond.Signal()
+	}
+}
+
+func (rf *Raft) handleAppendEntriesReply(peer int, request *AppendEntriesRequest, reply *AppendEntriesReply) {
+	if rf.state == Leader && rf.currentTerm == request.Term {
+		if reply.Success {
+			rf.matchIndex[peer] = request.PrevLogIndex + len(request.Entries)
+			rf.nextIndex[peer] = rf.matchIndex[peer] + 1
+
+			// update leader's commitIndex
+			n := len(rf.matchIndex)
+			confirmIndex := make([]int, n)
+			copy(confirmIndex, rf.matchIndex)
+			sort.Ints(confirmIndex)
+			newCommitIndex := confirmIndex[(n + 1) / 2]
+			if newCommitIndex > rf.commitIndex {
+				if rf.logMatch(rf.currentTerm, newCommitIndex) {
+					rf.commitIndex = newCommitIndex
+					rf.applyCond.Signal()
+				} else {
+					DPrintf("{Node: %d cannot update commitIndex}", rf.me)
+				}
+			}
+		} else {
+			if reply.Term > rf.currentTerm {
+				rf.ChangeState(Follower)
+				rf.currentTerm, rf.votedFor = reply.Term, -1
+			} else if reply.Term == rf.currentTerm {
+				rf.nextIndex[peer] = reply.ConflictIndex
+				if reply.ConflictTerm != -1 {
+					firstIndex := rf.logs[0].Index
+					for i := request.PrevLogIndex; i >= firstIndex; i -- {
+						if rf.logs[i - firstIndex].Term == reply.ConflictTerm {
+							rf.nextIndex[peer] = i + 1
+							break
+						} else if rf.logs[i - firstIndex].Term < reply.ConflictTerm {
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func (rf *Raft) needReplicate(peer int) bool {
+	rf.mu.RLock()
+	defer rf.mu.RUnlock()
+	return rf.state == Leader && rf.matchIndex[peer] < rf.getLastLog().Index 
+}
+
+func (rf *Raft) replicateOneRound(peer int) {
+	rf.mu.RLock()
+	if rf.state != Leader {
+		rf.mu.RUnlock()
+		return
+	}
+	peerCurrentLogIndex := rf.nextIndex[peer] - 1
+	if peerCurrentLogIndex < rf.logs[0].Index {
+		// need InstallSnapshot RPC to catch up leader
+	} else {
+		request := rf.genAppendEntriesRequest(peerCurrentLogIndex)
+		rf.mu.RUnlock()
+		reply := &AppendEntriesReply{}
+		if rf.sendAppendEntries(peer, request, reply) {
+			rf.mu.Lock()
+			rf.handleAppendEntriesReply(peer, request, reply)
+			rf.mu.Unlock()
+		}
+	}
+}
+
+func (rf *Raft) replicator(peer int) {
+	rf.replicatorCond[peer].L.Lock();
+	defer rf.replicatorCond[peer].L.Unlock()
+	for rf.killed() == false {
+		// if not need to replicate to this peer, 
+		// release CPU and wait for other goroutine's signal
+		// else call replicateOneRound to make the 
+		// peer to catch up the leader
+		for !rf.needReplicate(peer) {
+			rf.replicatorCond[peer].Wait()
+		}
+		rf.replicateOneRound(peer);
+	}
+}
+
+func (rf *Raft) coordinator() {
+	for rf.killed() == false {
+		rf.mu.Lock()
+		for rf.lastApplied >= rf.commitIndex {
+			rf.applyCond.Wait()
+		}
+		firstIdx, commitIdx, lastApplied := rf.logs[0].Index, rf.commitIndex, rf.lastApplied
+		entries := make([]Entry, commitIdx - lastApplied)
+		copy(entries, rf.logs[lastApplied - firstIdx + 1: commitIdx - firstIdx + 1])
+		rf.mu.Unlock()
+
+		for _, entry := range entries {
+			rf.applyCh <- ApplyMsg {
+				CommandValid: 	true,
+				Command: 		entry.Command,
+				CommandIndex:	entry.Index,
+			}
+		}
+
+		rf.mu.Lock()
+		rf.lastApplied = Max(rf.lastApplied, commitIdx)
+		rf.mu.Unlock()
+	}
+}
+
+// used by Start function to append a new Entry to logs
+func (rf *Raft) appendNewEntry(command interface{}) Entry {
+	lastLog := rf.getLastLog()
+	newLog := Entry{lastLog.Index + 1, rf.currentTerm, command}
+	rf.logs = append(rf.logs, newLog)
+	rf.matchIndex[rf.me], rf.nextIndex[rf.me] = newLog.Index, newLog.Index+1
+	return newLog
+}
 
 //
 // the service using Raft (e.g. a k/v server) wants to start
@@ -224,14 +366,15 @@ func (rf *Raft) watchTimer() {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
-
-	// Your code here (2B).
-
-
-	return index, term, isLeader
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if rf.state != Leader {
+		return -1, -1, false
+	}
+	// add new log
+	newLog := rf.appendNewEntry(command)
+	rf.BroadcastHeartbeat(false)
+	return newLog.Index, newLog.Term, true
 }
 
 //
@@ -301,12 +444,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		if i != rf.me {
 			rf.replicatorCond[i] = sync.NewCond(&sync.Mutex{})
 			// start goroutine to replicate entries in batch
-			// go rf.replicator(i)
+			go rf.replicator(i)
 		}
 	}
 
 	
 	go rf.watchTimer()
+
+	go rf.coordinator()
 
 	return rf
 }

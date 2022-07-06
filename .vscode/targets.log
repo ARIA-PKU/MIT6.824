@@ -13,7 +13,7 @@ make all --print-data-base --no-builtin-variables --no-builtin-rules --question
  
 
  
-# Make data base, printed on Mon Jul  4 18:08:20 2022
+# Make data base, printed on Wed Jul  6 10:56:41 2022
  
 
 # Variables
@@ -23,15 +23,10 @@ make all --print-data-base --no-builtin-variables --no-builtin-rules --question
 # automatic
  
 <D = $(patsubst %/,%,$(dir $<))
- 
 # automatic
- 
 ?F = $(notdir $?)
- 
 # default
- 
 .SHELLFLAGS := -c
- 
 # environment
 XDG_SESSION_CLASS = user
 # environment
@@ -69,7 +64,7 @@ LESSOPEN = | /usr/bin/lesspipe %s
 # environment
 VSCODE_CWD = /root
 # environment
-SSH_CONNECTION = 124.205.76.225 12742 172.16.178.207 22
+SSH_CONNECTION = 124.205.76.225 12867 172.16.178.207 22
 # environment
 PATH = /usr/local/go/bin:/root/.vscode-server/bin/30d9c6cd9483b2cc586687151bcbcd635f373630/bin/remote-cli:/home/acs/.homework:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 # environment
@@ -79,7 +74,7 @@ GOPATH = /root/go
 # environment
 VSCODE_LOG_STACK = false
 # environment
-VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-45a8a4a6-e1ff-4538-8e5b-2cecc5a53a35.sock
+VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-1a2270ce-3f74-4d34-af15-7cdedacf3a2f.sock
 # default
 .FEATURES := target-specific order-only second-expansion else-if shortest-stem undefine oneshell archives jobserver output-sync check-symlink load
 # environment
@@ -119,7 +114,7 @@ MAKECMDGOALS := all
 # environment
 SHLVL = 0
 # environment
-XDG_SESSION_ID = 9500
+XDG_SESSION_ID = 9859
 # environment
 USER = root
 # makefile
@@ -139,7 +134,7 @@ MAKEFLAGS = pqrR
 # environment
 MFLAGS = -pqrR
 # environment
-SSH_CLIENT = 124.205.76.225 12742 22
+SSH_CLIENT = 124.205.76.225 12867 22
 # automatic
 +D = $(patsubst %/,%,$(dir $+))
 # environment
@@ -388,6 +383,6 @@ check-all:
 # strcache performance: lookups = 33 / hit rate = 45%
 # hash-table stats:
 # Load=18/8192=0%, Rehash=0, Collisions=1/33=3%
-# Finished Make data base on Mon Jul  4 18:08:20 2022
+# Finished Make data base on Wed Jul  6 10:56:41 2022
 
  

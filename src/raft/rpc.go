@@ -43,6 +43,25 @@ func (rf *Raft) RequestVote(request *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.VoteGranted = true
 }
 
+type AppendEntriesRequest struct {
+	Term			int			// leader’s term
+	LeaderId		int			// so follower can redirect clients
+	PrevLogIndex	int			// index of log entry immediately precedingnew ones
+	PrevLogTerm		int			// term of prevLogIndex entry
+	Entries			[]Entry		// log entries to store (empty for heartbeat;
+								// may send more than one for efficiency)
+	LeaderCommit	int			//  leader’s commitIndex
+}
+
+type AppendEntriesReply struct {
+	Term 		int		// currentTerm, for leader to update itself
+	Success  	bool	// true if follower contained entry matching
+						// prevLogIndex and prevLogTerm
+						
+	ConflictTerm 	int	// those two are not defined in papers,
+	ConflictIndex	int	// but it could used to fast back-up
+}
+
 //
 // example code to send a RequestVote RPC to a server.
 // server is the index of the target server in rf.peers[].
@@ -74,5 +93,11 @@ func (rf *Raft) RequestVote(request *RequestVoteArgs, reply *RequestVoteReply) {
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+	return ok
+}
+
+
+func (rf *Raft) sendAppendEntries(server int, request *AppendEntriesRequest, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", request, reply)
 	return ok
 }

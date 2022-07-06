@@ -26,13 +26,6 @@ const (
 	Leader
 )
 
-// define the entry
-type Entry struct {
-	Index   int
-	Term    int
-	Command interface{}
-}
-
 // Hint from lecture:
 // Make sure the election timeouts in different peers don't always fire at the same time,
 // The tester requires that the leader send heartbeat RPCs no more than ten times per second.
@@ -50,7 +43,56 @@ func ElectionTimeout() time.Duration {
 	return time.Duration(ElectionTimeoutValue + rand.Intn(ElectionTimeoutValue)) * time.Millisecond
 }
 
-
 func (rf *Raft) getLastLog() Entry {
 	return rf.logs[len(rf.logs) - 1]
+}
+
+func (rf *Raft) genAppendEntriesRequest(prevLogIndex int) *AppendEntriesRequest {
+	firstIndex := rf.logs[0].Index
+	entries := make([]Entry, len(rf.logs[prevLogIndex - firstIndex + 1:]))
+	copy(entries, rf.logs[prevLogIndex - firstIndex + 1:])
+	return &AppendEntriesRequest {
+		Term:			rf.currentTerm,
+		LeaderId:		rf.me,
+		PrevLogIndex:	prevLogIndex,
+		PrevLogTerm:	rf.logs[prevLogIndex - firstIndex].Term,
+		Entries:		entries,
+		LeaderCommit: 	rf.commitIndex,
+	}
+}
+
+// if requestIndex < current index, need to delete the wrong log
+func (rf *Raft) logMatch(requestTerm, requestIndex int) bool {
+	if rf.logs[requestIndex - rf.logs[0].Index].Term == requestTerm && requestIndex <= rf.getLastLog().Index {
+		return true
+	}
+	return false
+}
+
+func cutEntriesSpace(entries []Entry) []Entry {
+	// We replace the array if we're using less than half of the space in
+	// it. This number is fairly arbitrary, chosen as an attempt to balance
+	// memory usage vs number of allocations. It could probably be improved
+	// with some focused tuning.
+	const lenMultiple = 2
+	if len(entries)*lenMultiple < cap(entries) {
+		newEntries := make([]Entry, len(entries))
+		copy(newEntries, entries)
+		return newEntries
+	}
+	return entries
+}
+
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func Max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
