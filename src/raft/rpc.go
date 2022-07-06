@@ -40,7 +40,8 @@ func (rf *Raft) RequestVote(request *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	rf.votedFor = request.CandidateId
-	reply.VoteGranted = true
+	rf.electionTimer.Reset(ElectionTimeout())
+	reply.Term, reply.VoteGranted = rf.currentTerm, true
 }
 
 type AppendEntriesRequest struct {

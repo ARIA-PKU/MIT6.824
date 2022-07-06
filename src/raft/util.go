@@ -63,7 +63,7 @@ func (rf *Raft) genAppendEntriesRequest(prevLogIndex int) *AppendEntriesRequest 
 
 // if requestIndex < current index, need to delete the wrong log
 func (rf *Raft) logMatch(requestTerm, requestIndex int) bool {
-	if rf.logs[requestIndex - rf.logs[0].Index].Term == requestTerm && requestIndex <= rf.getLastLog().Index {
+	if requestIndex <= rf.getLastLog().Index && rf.logs[requestIndex - rf.logs[0].Index].Term == requestTerm {
 		return true
 	}
 	return false

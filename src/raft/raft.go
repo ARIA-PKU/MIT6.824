@@ -23,6 +23,7 @@ import (
 	 "../labrpc"
 	 "time"
 	 "sort"
+	//  "fmt"
 ) 
 
 // import "bytes"
@@ -89,6 +90,7 @@ func (rf *Raft) ChangeState(state NodeState) {
 		for i := 0; i < len(rf.peers); i ++ {
 			rf.matchIndex[i], rf.nextIndex[i] = 0, lastLog.Index + 1
 		}
+		// rf.electionTimer.Reset(ElectionTimeout())
 		rf.electionTimer.Stop()
 		rf.heartbeatTimer.Reset(HeartbeatTimeout())
 	}
@@ -112,7 +114,7 @@ func (rf *Raft) startElection() {
 			continue
 		}
 		go func(peer int) {
-			reply := &RequestVoteReply{}
+			reply := &RequestVoteReply{VoteGranted: false}
 			if rf.sendRequestVote(peer, request, reply) {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
@@ -123,6 +125,8 @@ func (rf *Raft) startElection() {
 					if reply.VoteGranted {
 						grantedCount += 1
 						if grantedCount > len(rf.peers) / 2 {
+							// fmt.Printf("total is %v\n", len(rf.peers))
+							// fmt.Printf("{Node: %v} receive majority vote in term: %v and grantedCount is %v\n", rf.me, request.Term, grantedCount)
 							DPrintf("{Node: %v} receive majority vote in term: %v", rf.me, request.Term)
 							rf.ChangeState(Leader)
 							rf.BroadcastHeartbeat(true)
@@ -231,6 +235,8 @@ func (rf *Raft) AppendEntries(request *AppendEntriesRequest, reply *AppendEntrie
 		rf.commitIndex = newCommitIndex
 		rf.applyCond.Signal()
 	}
+
+	reply.Term, reply.Success = rf.currentTerm, true
 }
 
 func (rf *Raft) handleAppendEntriesReply(peer int, request *AppendEntriesRequest, reply *AppendEntriesReply) {
@@ -244,9 +250,12 @@ func (rf *Raft) handleAppendEntriesReply(peer int, request *AppendEntriesRequest
 			confirmIndex := make([]int, n)
 			copy(confirmIndex, rf.matchIndex)
 			sort.Ints(confirmIndex)
-			newCommitIndex := confirmIndex[(n + 1) / 2]
+			// fmt.Println(confirmIndex)
+			newCommitIndex := confirmIndex[(n - 1) / 2]
 			if newCommitIndex > rf.commitIndex {
 				if rf.logMatch(rf.currentTerm, newCommitIndex) {
+					// fmt.Printf("{Node %d} advance commitIndex from %d to %d with matchIndex %v in term %d\n", rf.me, rf.commitIndex, newCommitIndex, rf.matchIndex, rf.currentTerm)
+					DPrintf("{Node %d} advance commitIndex from %d to %d with matchIndex %v in term %d", rf.me, rf.commitIndex, newCommitIndex, rf.matchIndex, rf.currentTerm)
 					rf.commitIndex = newCommitIndex
 					rf.applyCond.Signal()
 				} else {
@@ -373,6 +382,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	// add new log
 	newLog := rf.appendNewEntry(command)
+	DPrintf("{Node %v} receives a new command[%v] to replicate in term %v", rf.me, newLog, rf.currentTerm)
 	rf.BroadcastHeartbeat(false)
 	return newLog.Index, newLog.Term, true
 }
