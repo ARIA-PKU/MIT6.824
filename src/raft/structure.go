@@ -28,6 +28,7 @@ type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
 	CommandIndex int
+	CommandTerm	 int	
 }
 
 //

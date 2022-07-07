@@ -108,3 +108,7 @@ func (rf *Raft) encodeState() []byte {
 	data := w.Bytes()
 	return data
 }
+
+func (rf *Raft) Me() int {
+	return rf.me
+}

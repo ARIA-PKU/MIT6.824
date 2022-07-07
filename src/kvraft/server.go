@@ -3,48 +3,79 @@ package kvraft
 import (
 	"../labgob"
 	"../labrpc"
-	"log"
 	"../raft"
-	"sync"
 	"sync/atomic"
+	"time"
 )
 
-const Debug = 0
+func (kv *KVServer) coordinator() {
+	for kv.killed() == false {
+		select {
+		case msg := <-kv.applyCh:
+			if msg.CommandValid {
+				kv.mu.Lock()
+				if msg.CommandIndex <= kv.lastApplied {
+					DPrintf("{Node: %v} not apply duplicated message", kv.rf.Me())
+					kv.mu.Unlock()
+					continue
+				}
+				kv.lastApplied = msg.CommandIndex
+				var reply *CommandReply
+				cmd := msg.Command.(Command)
+				if cmd.Op != OpGet  && kv.isDuplicateRPC(cmd.ClientId, cmd.CommandId) {
+					reply = kv.lastOperation[cmd.ClientId].LastReply
+				} else {
+					reply = kv.applyLogToStateMachine(cmd)
+					if cmd.Op != OpGet {
+						kv.lastOperation[cmd.ClientId] = OperationHistory{cmd.CommandId, reply}
+					}
+				}
 
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug > 0 {
-		log.Printf(format, a...)
+				if currentTerm, isLeader := kv.rf.GetState(); isLeader && msg.CommandTerm == currentTerm {
+					ch := kv.getNotifyChan(msg.CommandIndex)
+					ch <- reply
+				}
+
+				kv.mu.Unlock()
+			} else{
+
+			}
+		}
 	}
-	return
 }
 
+func (kv *KVServer) Command(request *CommandRequest, reply *CommandReply) {
+	kv.mu.RLock()
+	if request.Op != OpGet && kv.isDuplicateRPC(request.ClientId, request.CommandId) {
+		lastReply := kv.lastOperation[request.ClientId].LastReply
+		reply.Value, reply.Err = lastReply.Value, lastReply.Err
+		return
+	}
+	kv.mu.RUnlock()
 
-type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+	index, _, isLeader := kv.rf.Start(Command{request})
+	if !isLeader {
+		reply.Err = ErrWrongLeader
+		return
+	}
+
+	kv.mu.Lock()
+	ch := kv.getNotifyChan(index)
+	kv.mu.Unlock()
+
+	select {
+	case result := <-ch:
+		reply.Value, reply.Err = result.Value, result.Err
+	case <-time.After(ExecuteTimeout):
+		reply.Err = ErrTimeOut
+	}
+	go func() {
+		kv.mu.Lock()
+		kv.removeOutOfDateNotifyChan(index)
+		kv.mu.Unlock()
+	}()
 }
 
-type KVServer struct {
-	mu      sync.Mutex
-	me      int
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
-	dead    int32 // set by Kill()
-
-	maxraftstate int // snapshot if log grows this big
-
-	// Your definitions here.
-}
-
-
-func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
-}
-
-func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// Your code here.
-}
 
 //
 // the tester calls Kill() when a KVServer instance won't
@@ -84,18 +115,23 @@ func (kv *KVServer) killed() bool {
 func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *KVServer {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	labgob.Register(Op{})
+	labgob.Register(Command{})
+	
+	applyCh := make(chan raft.ApplyMsg)
 
-	kv := new(KVServer)
-	kv.me = me
-	kv.maxraftstate = maxraftstate
+	kv := &KVServer {
+		me:	 			me,
+		maxraftstate: 	maxraftstate,
+		applyCh:		applyCh,
+		rf:				raft.Make(servers, me, persister, applyCh),
+		lastOperation:	make(map[int64]OperationHistory),
+		notifyChans:	make(map[int]chan *CommandReply),
+		stateMachine:	NewMemoryKV(),
+	}
 
 	// You may need initialization code here.
-
-	kv.applyCh = make(chan raft.ApplyMsg)
-	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-
-	// You may need initialization code here.
+	
+	go kv.coordinator()
 
 	return kv
 }

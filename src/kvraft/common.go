@@ -1,33 +1,59 @@
 package kvraft
 
-const (
-	OK             = "OK"
-	ErrNoKey       = "ErrNoKey"
-	ErrWrongLeader = "ErrWrongLeader"
+import (
+	"log"	
+	"time"
 )
 
-type Err string
+const ExecuteTimeout = 500 * time.Millisecond
 
-// Put or Append
-type PutAppendArgs struct {
-	Key   string
-	Value string
-	Op    string // "Put" or "Append"
-	// You'll have to add definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+const Debug = 0
+
+func DPrintf(format string, a ...interface{}) (n int, err error) {
+	if Debug > 0 {
+		log.Printf(format, a...)
+	}
+	return
 }
 
-type PutAppendReply struct {
-	Err Err
+type Err uint8
+
+const (
+	OK				Err = iota
+	ErrNoKey
+	ErrWrongLeader
+	ErrTimeOut
+)
+
+type Operation uint8
+
+const (
+	OpGet	Operation = iota
+	OpPut
+	OpAppend
+)
+
+type CommandRequest struct {
+	Key 		string
+	Value		string
+	Op			Operation
+	ClientId	int64
+	CommandId	int64
 }
 
-type GetArgs struct {
-	Key string
-	// You'll have to add definitions here.
+type Command struct {
+	*CommandRequest
 }
 
-type GetReply struct {
+type CommandReply struct {
 	Err   Err
 	Value string
+}
+
+ // determine whether log is duplicated 
+ // by recording the last commandId and response 
+ // corresponding to the clientId
+type OperationHistory struct {
+	MaxAppliedCommand	int64
+	LastReply			*CommandReply
 }

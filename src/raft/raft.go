@@ -337,6 +337,7 @@ func (rf *Raft) coordinator() {
 				CommandValid: 	true,
 				Command: 		entry.Command,
 				CommandIndex:	entry.Index,
+				CommandTerm:	entry.Term,
 			}
 		}
 
