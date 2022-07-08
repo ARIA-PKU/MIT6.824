@@ -112,3 +112,103 @@ func (rf *Raft) encodeState() []byte {
 func (rf *Raft) Me() int {
 	return rf.me
 }
+
+func (rf *Raft) GetRaftStateSize() int {
+	rf.mu.RLock()
+	defer rf.mu.RUnlock()
+	return rf.persister.RaftStateSize()
+}
+
+func (rf *Raft) genInstallSnapshotRequest() *InstallSnapshotRequest {
+	firstLog := rf.logs[0]
+	return &InstallSnapshotRequest{
+		Term:				rf.currentTerm,
+		LeaderId:			rf.me,
+		LastIncludedIndex:	firstLog.Index,
+		LastIncludedTerm:	firstLog.Term,
+		Data:				rf.persister.ReadSnapshot(),
+	}
+}
+
+func (rf *Raft) InstallSnapshot(request *InstallSnapshotRequest, reply *InstallSnapshotReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	reply.Term = rf.currentTerm
+
+	if request.Term < rf.currentTerm {
+		return
+	}
+
+	if request.Term > rf.currentTerm {
+		rf.currentTerm, rf.votedFor = request.Term, -1
+		rf.persist()
+	}
+
+	rf.ChangeState(Follower)
+	rf.electionTimer.Reset(ElectionTimeout())
+
+	// snapshot is outdated
+	if request.LastIncludedIndex <= rf.commitIndex {
+		return
+	}
+
+	go func() {
+		rf.applyCh <- ApplyMsg{
+			SnapshotValid: true,
+			Snapshot:      request.Data,
+			SnapshotTerm:  request.LastIncludedTerm,
+			SnapshotIndex: request.LastIncludedIndex,
+		}
+	}()
+}
+
+func (rf *Raft) handleInstallSnapshotReply(peer int, request *InstallSnapshotRequest, reply *InstallSnapshotReply) {
+	if rf.state == Leader && rf.currentTerm == request.Term {
+		if reply.Term > rf.currentTerm {
+			rf.ChangeState(Follower)
+			rf.currentTerm, rf.votedFor = reply.Term, -1
+			rf.persist()
+		} else {
+			rf.matchIndex[peer], rf.nextIndex[peer] = request.LastIncludedIndex, request.LastIncludedIndex + 1
+		}
+	}
+}
+
+// use snapshot to trim logs and restore its state
+func (rf *Raft) Snapshot(index int, snapshot []byte) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	startIndex := rf.logs[0].Index
+	if index <= startIndex {
+		// has been snapshot before
+		return
+	}
+	rf.logs = cutEntriesSpace(rf.logs[index - startIndex:])
+	rf.logs[0].Command = nil
+	rf.persister.SaveStateAndSnapshot(rf.encodeState(), snapshot)
+}
+
+func (rf *Raft) CondInstallSnapshot(term int, index int, snapshot []byte) bool {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if index <= rf.commitIndex {
+		DPrintf("snapshot is outdated")
+		return false
+	}
+
+	if index > rf.getLastLog().Index {
+		rf.logs = make([]Entry, 1)
+	} else {
+		rf.logs = cutEntriesSpace(rf.logs[index - rf.logs[0].Index:])
+		rf.logs[0].Command = nil
+	}
+	// first entry is dummy entry
+	rf.logs[0].Term, rf.logs[0].Index = term, index
+	rf.lastApplied, rf.commitIndex = index, index
+	
+	rf.persister.SaveStateAndSnapshot(rf.encodeState(), snapshot)
+	return true
+}

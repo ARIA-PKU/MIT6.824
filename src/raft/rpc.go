@@ -103,3 +103,19 @@ func (rf *Raft) sendAppendEntries(server int, request *AppendEntriesRequest, rep
 	ok := rf.peers[server].Call("Raft.AppendEntries", request, reply)
 	return ok
 }
+
+type InstallSnapshotRequest struct {
+	Term				int
+	LeaderId			int
+	LastIncludedIndex	int
+	LastIncludedTerm	int
+	Data				[]byte
+}
+
+type InstallSnapshotReply struct {
+	Term int
+}
+
+func (rf *Raft) sendInstallSnapshot(server int, request *InstallSnapshotRequest, reply *InstallSnapshotReply) bool {
+	return rf.peers[server].Call("Raft.InstallSnapshot", request, reply)
+}

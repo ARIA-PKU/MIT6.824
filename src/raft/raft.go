@@ -25,12 +25,13 @@ import (
 	 "sort"
 	 "bytes"
 	 "../labgob"
-	//  "fmt"
 ) 
 
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
+	rf.mu.RLock()
+	defer rf.mu.RUnlock()
 	return rf.currentTerm, rf.state == Leader
 }
 
@@ -61,11 +62,10 @@ func (rf *Raft) readPersist(data []byte) {
 	   d.Decode(&votedFor) != nil || 
 	   d.Decode(&logs) != nil {
 	  DPrintf("{Node: %v restore failed}", rf.me)
-	} else {
-	  rf.currentTerm = currentTerm
-	  rf.votedFor = votedFor
-	  rf.logs = logs
-	}
+	} 
+	rf.currentTerm, rf.votedFor, rf.logs = currentTerm, votedFor, logs
+	// there will always be at least one entry in rf.logs
+	rf.lastApplied, rf.commitIndex = rf.logs[0].Index, rf.logs[0].Index
 }
 
 func (rf *Raft) ChangeState(state NodeState) {
@@ -118,8 +118,6 @@ func (rf *Raft) startElection() {
 					if reply.VoteGranted {
 						grantedCount += 1
 						if grantedCount > len(rf.peers) / 2 {
-							// fmt.Printf("total is %v\n", len(rf.peers))
-							// fmt.Printf("{Node: %v} receive majority vote in term: %v and grantedCount is %v\n", rf.me, request.Term, grantedCount)
 							DPrintf("{Node: %v} receive majority vote in term: %v", rf.me, request.Term)
 							rf.ChangeState(Leader)
 							rf.BroadcastHeartbeat(true)
@@ -244,11 +242,9 @@ func (rf *Raft) handleAppendEntriesReply(peer int, request *AppendEntriesRequest
 			confirmIndex := make([]int, n)
 			copy(confirmIndex, rf.matchIndex)
 			sort.Ints(confirmIndex)
-			// fmt.Println(confirmIndex)
 			newCommitIndex := confirmIndex[(n - 1) / 2]
 			if newCommitIndex > rf.commitIndex {
 				if rf.logMatch(rf.currentTerm, newCommitIndex) {
-					// fmt.Printf("{Node %d} advance commitIndex from %d to %d with matchIndex %v in term %d\n", rf.me, rf.commitIndex, newCommitIndex, rf.matchIndex, rf.currentTerm)
 					DPrintf("{Node %d} advance commitIndex from %d to %d with matchIndex %v in term %d", rf.me, rf.commitIndex, newCommitIndex, rf.matchIndex, rf.currentTerm)
 					rf.commitIndex = newCommitIndex
 					rf.applyCond.Signal()
@@ -294,6 +290,15 @@ func (rf *Raft) replicateOneRound(peer int) {
 	peerCurrentLogIndex := rf.nextIndex[peer] - 1
 	if peerCurrentLogIndex < rf.logs[0].Index {
 		// need InstallSnapshot RPC to catch up leader
+		request := rf.genInstallSnapshotRequest()
+		rf.mu.RUnlock()
+
+		reply := &InstallSnapshotReply{}
+		if rf.sendInstallSnapshot(peer, request, reply) {
+			rf.mu.Lock()
+			rf.handleInstallSnapshotReply(peer, request, reply)
+			rf.mu.Unlock()
+		}
 	} else {
 		request := rf.genAppendEntriesRequest(peerCurrentLogIndex)
 		rf.mu.RUnlock()
@@ -329,6 +334,7 @@ func (rf *Raft) coordinator() {
 		}
 		firstIdx, commitIdx, lastApplied := rf.logs[0].Index, rf.commitIndex, rf.lastApplied
 		entries := make([]Entry, commitIdx - lastApplied)
+		
 		copy(entries, rf.logs[lastApplied - firstIdx + 1: commitIdx - firstIdx + 1])
 		rf.mu.Unlock()
 
@@ -438,8 +444,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		heartbeatTimer: time.NewTimer(HeartbeatTimeout()),
 		electionTimer: 	time.NewTimer(ElectionTimeout()),
 	}
-	// Your initialization code here (2A, 2B, 2C).
-	
 	
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())

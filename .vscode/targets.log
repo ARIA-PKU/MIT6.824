@@ -13,7 +13,7 @@ make all --print-data-base --no-builtin-variables --no-builtin-rules --question
  
 
  
-# Make data base, printed on Fri Jul  8 10:42:47 2022
+# Make data base, printed on Fri Jul  8 18:06:19 2022
  
 
 # Variables
@@ -33,6 +33,7 @@ make all --print-data-base --no-builtin-variables --no-builtin-rules --question
 .SHELLFLAGS := -c
  
 # environment
+ 
 XDG_SESSION_CLASS = user
 # environment
 VSCODE_AGENT_FOLDER = /root/.vscode-server
@@ -79,7 +80,7 @@ GOPATH = /root/go
 # environment
 VSCODE_LOG_STACK = false
 # environment
-VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-13905412-cb81-4274-a03b-22f101473f3a.sock
+VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-9d00a5af-1a9a-41bc-bbb7-8675153a5d09.sock
 # default
 .FEATURES := target-specific order-only second-expansion else-if shortest-stem undefine oneshell archives jobserver output-sync check-symlink load
 # environment
@@ -388,6 +389,6 @@ check-all:
 # strcache performance: lookups = 33 / hit rate = 45%
 # hash-table stats:
 # Load=18/8192=0%, Rehash=0, Collisions=1/33=3%
-# Finished Make data base on Fri Jul  8 10:42:47 2022
+# Finished Make data base on Fri Jul  8 18:06:19 2022
 
  

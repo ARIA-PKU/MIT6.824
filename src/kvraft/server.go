@@ -36,10 +36,23 @@ func (kv *KVServer) coordinator() {
 					ch := kv.getNotifyChan(msg.CommandIndex)
 					ch <- reply
 				}
+				
+				if kv.needSnapshot() {
+					// fmt.Printf("take snapshot")
+					kv.takeSnapshot(msg.CommandIndex)
+				}
 
 				kv.mu.Unlock()
-			} else{
-
+			} else if msg.SnapshotValid{
+				// recover from snapshot
+				kv.mu.Lock()
+				if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+					kv.restoreSnapshot(msg.Snapshot)
+					kv.lastApplied = msg.SnapshotIndex
+				}
+				kv.mu.Unlock()
+			} else {
+				panic("unexpected message in coordinator")
 			}
 		}
 	}
@@ -135,6 +148,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 		stateMachine:	NewMemoryKV(),
 	}
 	
+	kv.restoreSnapshot(persister.ReadSnapshot())
+
 	go kv.coordinator()
 
 	return kv

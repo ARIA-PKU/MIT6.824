@@ -29,13 +29,18 @@ type ApplyMsg struct {
 	Command      interface{}
 	CommandIndex int
 	CommandTerm	 int	
+
+	SnapshotValid bool
+	Snapshot      []byte
+	SnapshotTerm  int
+	SnapshotIndex int
 }
 
 //
 // A Go object implementing a single Raft peer.
 //
 type Raft struct {
-	mu        sync.RWMutex          // Lock to protect shared access to this peer's state
+	mu        sync.RWMutex        // Lock to protect shared access to this peer's state
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]

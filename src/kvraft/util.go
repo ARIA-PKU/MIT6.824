@@ -1,5 +1,11 @@
 package kvraft
 
+import(
+	"bytes"
+	"../labgob"
+	// "fmt"
+)
+
 func (kv *KVServer) isDuplicateRPC(clientId, commandId int64) bool {
 	lastReply, ok := kv.lastOperation[clientId]
 	return ok && commandId <= lastReply.MaxAppliedCommand
@@ -28,4 +34,36 @@ func (kv *KVServer) applyLogToStateMachine(command Command) *CommandReply {
 		value, err = kv.stateMachine.Get(command.Key)
 	}
 	return &CommandReply{err, value}
+}
+
+func (kv *KVServer) needSnapshot() bool {
+	return kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() >= kv.maxraftstate
+}
+
+func (kv *KVServer) takeSnapshot(index int) {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(kv.stateMachine)
+	e.Encode(kv.lastOperation)
+	kv.rf.Snapshot(index, w.Bytes())
+	// fmt.Println("finish here")
+}
+
+func (kv *KVServer) restoreSnapshot(snapshot []byte) {
+	if snapshot == nil || len(snapshot) == 0 {
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+	var stateMachine MemoryKV
+	var lastOperation map[int64]OperationHistory
+	// d.Decode(&stateMachine)
+	// d.Decode(&lastOperation)
+	if d.Decode(&stateMachine) != nil ||
+		d.Decode(&lastOperation) != nil {
+		DPrintf("{Node %v} restores snapshot failed", kv.rf.Me())
+		// fmt.Printf("{Node %v} restores snapshot failed\n", kv.rf.Me())
+	}
+	// fmt.Printf("{Node %v} restores snapshot successfully\n", kv.rf.Me())
+	kv.stateMachine, kv.lastOperation = &stateMachine, lastOperation
 }
