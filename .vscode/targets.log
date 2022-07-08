@@ -13,7 +13,7 @@ make all --print-data-base --no-builtin-variables --no-builtin-rules --question
  
 
  
-# Make data base, printed on Thu Jul  7 17:38:44 2022
+# Make data base, printed on Fri Jul  8 10:42:47 2022
  
 
 # Variables
@@ -69,7 +69,7 @@ LESSOPEN = | /usr/bin/lesspipe %s
 # environment
 VSCODE_CWD = /root
 # environment
-SSH_CONNECTION = 124.205.76.225 13113 172.16.178.207 22
+SSH_CONNECTION = 124.205.76.225 13243 172.16.178.207 22
 # environment
 PATH = /usr/local/go/bin:/root/.vscode-server/bin/30d9c6cd9483b2cc586687151bcbcd635f373630/bin/remote-cli:/home/acs/.homework:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 # environment
@@ -79,7 +79,7 @@ GOPATH = /root/go
 # environment
 VSCODE_LOG_STACK = false
 # environment
-VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-ddfb220e-e82f-46a8-a239-cd027b8fafed.sock
+VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-13905412-cb81-4274-a03b-22f101473f3a.sock
 # default
 .FEATURES := target-specific order-only second-expansion else-if shortest-stem undefine oneshell archives jobserver output-sync check-symlink load
 # environment
@@ -119,7 +119,7 @@ MAKECMDGOALS := all
 # environment
 SHLVL = 0
 # environment
-XDG_SESSION_ID = 10055
+XDG_SESSION_ID = 10216
 # environment
 USER = root
 # makefile
@@ -139,7 +139,7 @@ MAKEFLAGS = pqrR
 # environment
 MFLAGS = -pqrR
 # environment
-SSH_CLIENT = 124.205.76.225 13113 22
+SSH_CLIENT = 124.205.76.225 13243 22
 # automatic
 +D = $(patsubst %/,%,$(dir $+))
 # environment
@@ -388,6 +388,6 @@ check-all:
 # strcache performance: lookups = 33 / hit rate = 45%
 # hash-table stats:
 # Load=18/8192=0%, Rehash=0, Collisions=1/33=3%
-# Finished Make data base on Thu Jul  7 17:38:44 2022
+# Finished Make data base on Fri Jul  8 10:42:47 2022
 
  

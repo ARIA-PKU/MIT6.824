@@ -6,6 +6,7 @@ import (
 	"../raft"
 	"sync/atomic"
 	"time"
+	// "fmt"
 )
 
 func (kv *KVServer) coordinator() {
@@ -15,7 +16,7 @@ func (kv *KVServer) coordinator() {
 			if msg.CommandValid {
 				kv.mu.Lock()
 				if msg.CommandIndex <= kv.lastApplied {
-					DPrintf("{Node: %v} not apply duplicated message", kv.rf.Me())
+					DPrintf("{Node: %v} does not apply duplicated message", kv.rf.Me())
 					kv.mu.Unlock()
 					continue
 				}
@@ -45,10 +46,13 @@ func (kv *KVServer) coordinator() {
 }
 
 func (kv *KVServer) Command(request *CommandRequest, reply *CommandReply) {
+	// defer fmt.Printf("{Node %v} processes CommandRequest %v with CommandResponse %v\n", kv.rf.Me(), request, reply)
+	// fmt.Printf("{Node %v} processes CommandRequest %v with CommandResponse %v", kv.rf.Me(), request, reply)
 	kv.mu.RLock()
 	if request.Op != OpGet && kv.isDuplicateRPC(request.ClientId, request.CommandId) {
 		lastReply := kv.lastOperation[request.ClientId].LastReply
 		reply.Value, reply.Err = lastReply.Value, lastReply.Err
+		kv.mu.RUnlock()
 		return
 	}
 	kv.mu.RUnlock()
@@ -88,9 +92,9 @@ func (kv *KVServer) Command(request *CommandRequest, reply *CommandReply) {
 // to suppress debug output from a Kill()ed instance.
 //
 func (kv *KVServer) Kill() {
+	// fmt.Printf("{Node: %v} has been killed", kv.rf.Me())
 	atomic.StoreInt32(&kv.dead, 1)
 	kv.rf.Kill()
-	// Your code here, if desired.
 }
 
 func (kv *KVServer) killed() bool {
@@ -123,13 +127,13 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 		me:	 			me,
 		maxraftstate: 	maxraftstate,
 		applyCh:		applyCh,
+		dead:			0,
+		lastApplied:	0,
 		rf:				raft.Make(servers, me, persister, applyCh),
 		lastOperation:	make(map[int64]OperationHistory),
 		notifyChans:	make(map[int]chan *CommandReply),
 		stateMachine:	NewMemoryKV(),
 	}
-
-	// You may need initialization code here.
 	
 	go kv.coordinator()
 
