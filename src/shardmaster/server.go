@@ -1,45 +1,99 @@
 package shardmaster
 
 
-import "../raft"
-import "../labrpc"
-import "sync"
-import "../labgob"
+import (
+	"../raft"
+ 	"../labrpc"
+ 	"sync"
+ 	"../labgob"
+	"time"
+	"fmt"
+	"sync/atomic"
+)
 
 
 type ShardMaster struct {
-	mu      sync.Mutex
-	me      int
+	mu      sync.RWMutex
+	dead    int32
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
 
-	// Your data here.
-
-	configs []Config // indexed by config num
+	stateMachine   ConfigStateMachine             // Config stateMachine
+	lastOperations map[int64]OperationContext    // determine whether log is duplicated by recording the last commandId and Reply corresponding to the clientId
+	notifyChans    map[int]chan *CommandReply // notify client goroutine by applier goroutine to Reply
 }
 
 
-type Op struct {
-	// Your data here.
+func (sm *ShardMaster) Command(request *CommandRequest, Reply *CommandReply) {
+	// defer DPrintf("{Node %v}'s state is {}, processes CommandRequest %v with CommandReply %v", sm.rf.Me(), request, Reply)
+	// return result directly without raft layer's participation if request is duplicated
+	sm.mu.RLock()
+	if request.Op != OpQuery && sm.isDuplicateRequest(request.ClientId, request.CommandId) {
+		lastReply := sm.lastOperations[request.ClientId].LastReply
+		Reply.Config, Reply.Err = lastReply.Config, lastReply.Err
+		sm.mu.RUnlock()
+		return
+	}
+	sm.mu.RUnlock()
+	// do not hold lock to improve throughput
+	index, _, isLeader := sm.rf.Start(Command{request})
+	if !isLeader {
+		Reply.Err = ErrWrongLeader
+		return
+	}
+	sm.mu.Lock()
+	ch := sm.getNotifyChan(index)
+	sm.mu.Unlock()
+	select {
+	case result := <-ch:
+		Reply.Config, Reply.Err = result.Config, result.Err
+	case <-time.After(ExecuteTimeout):
+		Reply.Err = ErrTimeout
+	}
+	// release notifyChan to reduce memory footprint
+	// why asynchronously? to improve throughput, here is no need to block client request
+	go func() {
+		sm.mu.Lock()
+		sm.removeOutdatedNotifyChan(index)
+		sm.mu.Unlock()
+	}()
 }
 
 
-func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
-	// Your code here.
-}
+// a dedicated applier goroutine to apply committed entries to stateMachine
+func (sm *ShardMaster) applier() {
+	for sm.killed() == false {
+		select {
+		case message := <-sm.applyCh:
+			// DPrintf("{Node %v} tries to apply message %v", sm.rf.Me(), message)
+			if message.CommandValid {
+				var Reply *CommandReply
+				command := message.Command.(Command)
+				sm.mu.Lock()
 
-func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
-	// Your code here.
-}
+				if command.Op != OpQuery && sm.isDuplicateRequest(command.ClientId, command.CommandId) {
+					// DPrintf("{Node %v} doesn't apply duplicated message %v to stateMachine because maxAppliedCommandId is %v for client %v", sm.rf.Me(), message, sm.lastOperations[command.ClientId], command.ClientId)
+					Reply = sm.lastOperations[command.ClientId].LastReply
+				} else {
+					Reply = sm.applyLogToStateMachine(command)
+					if command.Op != OpQuery {
+						sm.lastOperations[command.ClientId] = OperationContext{command.CommandId, Reply}
+					}
+				}
 
-func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
-	// Your code here.
-}
+				// only notify related channel for currentTerm's log when node is leader
+				if currentTerm, isLeader := sm.rf.GetState(); isLeader && message.CommandTerm == currentTerm {
+					ch := sm.getNotifyChan(message.CommandIndex)
+					ch <- Reply
+				}
 
-func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
-	// Your code here.
+				sm.mu.Unlock()
+			} else {
+				panic(fmt.Sprintf("unexpected Message %v", message))
+			}
+		}
+	}
 }
-
 
 //
 // the tester calls Kill() when a ShardMaster instance won't
@@ -48,8 +102,13 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
 // turn off debug output from this instance.
 //
 func (sm *ShardMaster) Kill() {
+	// DPrintf("{ShardMaster %v} has been killed", sm.rf.Me())
+	atomic.StoreInt32(&sm.dead, 1)
 	sm.rf.Kill()
-	// Your code here, if desired.
+}
+
+func (sm *ShardMaster) killed() bool {
+	return atomic.LoadInt32(&sm.dead) == 1
 }
 
 // needed by shardkv tester
@@ -64,17 +123,22 @@ func (sm *ShardMaster) Raft() *raft.Raft {
 // me is the index of the current server in servers[].
 //
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardMaster {
-	sm := new(ShardMaster)
-	sm.me = me
+	// call labgob.Register on structures you want
+	// Go's RPC library to marshall/unmarshall.
+	labgob.Register(Command{})
+	applyCh := make(chan raft.ApplyMsg)
 
-	sm.configs = make([]Config, 1)
-	sm.configs[0].Groups = map[int][]string{}
+	sm := &ShardMaster{
+		applyCh:        applyCh,
+		dead:           0,
+		rf:             raft.Make(servers, me, persister, applyCh),
+		stateMachine:   NewMemoryConfigStateMachine(),
+		lastOperations: make(map[int64]OperationContext),
+		notifyChans:    make(map[int]chan *CommandReply),
+	}
+	// start applier goroutine to apply committed logs to stateMachine
+	go sm.applier()
 
-	labgob.Register(Op{})
-	sm.applyCh = make(chan raft.ApplyMsg)
-	sm.rf = raft.Make(servers, me, persister, sm.applyCh)
-
-	// Your code here.
-
+	// DPrintf("{ShardMaster %v} has started", sm.rf.Me())
 	return sm
 }

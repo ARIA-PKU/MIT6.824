@@ -1,5 +1,9 @@
 package shardmaster
 
+import(
+	"time"
+)
+
 //
 // Master shard server: assigns shards to replication groups.
 //
@@ -20,6 +24,8 @@ package shardmaster
 // The number of shards.
 const NShards = 10
 
+const ExecuteTimeout = 500 * time.Millisecond
+
 // A configuration -- an assignment of shards to groups.
 // Please don't change this.
 type Config struct {
@@ -28,46 +34,48 @@ type Config struct {
 	Groups map[int][]string // gid -> servers[]
 }
 
+func DefaultConfig() Config {
+	return Config{Groups: make(map[int][]string)}
+}
+
+type Err uint8
+
 const (
-	OK = "OK"
+	OK Err = iota
+	ErrWrongLeader
+	ErrTimeout
 )
 
-type Err string
+type OperationOp uint8
 
-type JoinArgs struct {
-	Servers map[int][]string // new GID -> servers mappings
+const (
+	OpJoin OperationOp = iota
+	OpLeave
+	OpMove
+	OpQuery
+)
+
+type CommandRequest struct {
+	Servers   map[int][]string // for Join
+	GIDs      []int            // for Leave
+	Shard     int              // for Move
+	GID       int              // for Move
+	Num       int              // for Query
+	Op        OperationOp
+	ClientId  int64
+	CommandId int64
 }
 
-type JoinReply struct {
-	WrongLeader bool
-	Err         Err
+type CommandReply struct {
+	Err    Err
+	Config Config
 }
 
-type LeaveArgs struct {
-	GIDs []int
+type Command struct {
+	*CommandRequest
 }
 
-type LeaveReply struct {
-	WrongLeader bool
-	Err         Err
-}
-
-type MoveArgs struct {
-	Shard int
-	GID   int
-}
-
-type MoveReply struct {
-	WrongLeader bool
-	Err         Err
-}
-
-type QueryArgs struct {
-	Num int // desired config number
-}
-
-type QueryReply struct {
-	WrongLeader bool
-	Err         Err
-	Config      Config
+type OperationContext struct {
+	MaxAppliedCommandId int64
+	LastReply	        *CommandReply
 }

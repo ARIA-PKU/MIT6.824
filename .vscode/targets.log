@@ -13,7 +13,7 @@ make all --print-data-base --no-builtin-variables --no-builtin-rules --question
  
 
  
-# Make data base, printed on Fri Jul  8 18:06:19 2022
+# Make data base, printed on Sat Jul  9 13:11:16 2022
  
 
 # Variables
@@ -39,8 +39,6 @@ XDG_SESSION_CLASS = user
 VSCODE_AGENT_FOLDER = /root/.vscode-server
 # environment
 XDG_SESSION_TYPE = tty
-# environment
-VSCODE_LOG_NATIVE = false
 # automatic
 ?D = $(patsubst %/,%,$(dir $?))
 # automatic
@@ -56,7 +54,7 @@ SHELL = /bin/sh
 # environment
 VSCODE_NLS_CONFIG = {"locale":"zh-cn","availableLanguages":{}}
 # environment
-_ = /root/.vscode-server/bin/30d9c6cd9483b2cc586687151bcbcd635f373630/node
+_ = /root/.vscode-server/bin/92d25e35d9bf1a6b16f7d0758f25d48ace11e5b9/node
 # makefile (from 'Makefile', line 1)
 MAKEFILE_LIST :=  Makefile
 # 'override' directive
@@ -64,31 +62,27 @@ GNUMAKEFLAGS :=
 # environment
 DBUS_SESSION_BUS_ADDRESS = unix:path=/run/user/0/bus
 # environment
-VSCODE_VERBOSE_LOGGING = true
-# environment
 LESSOPEN = | /usr/bin/lesspipe %s
 # environment
 VSCODE_CWD = /root
 # environment
-SSH_CONNECTION = 124.205.76.225 13243 172.16.178.207 22
+SSH_CONNECTION = 124.205.76.225 13631 172.16.178.207 22
 # environment
-PATH = /usr/local/go/bin:/root/.vscode-server/bin/30d9c6cd9483b2cc586687151bcbcd635f373630/bin/remote-cli:/home/acs/.homework:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+PATH = /usr/local/go/bin:/root/.vscode-server/bin/92d25e35d9bf1a6b16f7d0758f25d48ace11e5b9/bin/remote-cli:/home/acs/.homework:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 # environment
 XDG_RUNTIME_DIR = /run/user/0
 # environment
 GOPATH = /root/go
 # environment
-VSCODE_LOG_STACK = false
+ELECTRON_RUN_AS_NODE = 1
 # environment
-VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-9d00a5af-1a9a-41bc-bbb7-8675153a5d09.sock
+VSCODE_IPC_HOOK_CLI = /run/user/0/vscode-ipc-f4ee266f-dfef-454a-b84e-2700e7352481.sock
 # default
 .FEATURES := target-specific order-only second-expansion else-if shortest-stem undefine oneshell archives jobserver output-sync check-symlink load
 # environment
 LS_COLORS = 
 # automatic
 %F = $(notdir $%)
-# environment
-VSCODE_PIPE_LOGGING = true
 # environment
 PWD = /root/6.824
 # default
@@ -120,7 +114,7 @@ MAKECMDGOALS := all
 # environment
 SHLVL = 0
 # environment
-XDG_SESSION_ID = 10216
+XDG_SESSION_ID = 10413
 # environment
 USER = root
 # makefile
@@ -131,6 +125,8 @@ GOROOT = /usr/local/go
 %D = $(patsubst %/,%,$(dir $%))
 # default
 MAKE_COMMAND := make
+# environment
+OLDPWD = /root/.vscode-server/bin/92d25e35d9bf1a6b16f7d0758f25d48ace11e5b9
 # default
 .VARIABLES := 
 # automatic
@@ -140,11 +136,11 @@ MAKEFLAGS = pqrR
 # environment
 MFLAGS = -pqrR
 # environment
-SSH_CLIENT = 124.205.76.225 13243 22
+SSH_CLIENT = 124.205.76.225 13631 22
 # automatic
 +D = $(patsubst %/,%,$(dir $+))
 # environment
-BROWSER = /root/.vscode-server/bin/30d9c6cd9483b2cc586687151bcbcd635f373630/bin/helpers/browser.sh
+BROWSER = /root/.vscode-server/bin/92d25e35d9bf1a6b16f7d0758f25d48ace11e5b9/bin/helpers/browser.sh
 # environment
 VSCODE_HANDLES_SIGPIPE = true
 # default
@@ -166,13 +162,11 @@ MAKE_HOST := x86_64-pc-linux-gnu
 # environment
 LANG = C
 # environment
-VSCODE_EXTHOST_WILL_SEND_SOCKET = true
-# environment
 MOTD_SHOWN = pam
 # makefile (from 'Makefile', line 6)
 LABS = " lab1 lab2a lab2b lab2c lab3a lab3b lab4a lab4b "
 # variable set hash-table stats:
-# Load=72/1024=7%, Rehash=0, Collisions=9/99=9%
+# Load=69/1024=7%, Rehash=0, Collisions=9/96=9%
 
 # Pattern-specific Variable Values
 
@@ -389,6 +383,6 @@ check-all:
 # strcache performance: lookups = 33 / hit rate = 45%
 # hash-table stats:
 # Load=18/8192=0%, Rehash=0, Collisions=1/33=3%
-# Finished Make data base on Fri Jul  8 18:06:19 2022
+# Finished Make data base on Sat Jul  9 13:11:16 2022
 
  
