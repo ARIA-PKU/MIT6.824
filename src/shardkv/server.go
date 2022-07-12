@@ -1,41 +1,106 @@
 package shardkv
 
 
-// import "../shardmaster"
-import "../labrpc"
-import "../raft"
-import "sync"
-import "../labgob"
+import(
+	"../shardmaster"
+	"../labrpc"
+	"../raft"
+	// "sync"
+	"sync/atomic"
+	"../labgob"
+	"time"
+	"fmt"
+)
 
 
-
-type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+// deal with the command from client
+func (kv *ShardKV) Command(request *CommandRequest, reply *CommandReply) {
+	kv.mu.RLock()
+	// fmt.Printf("command here1\n")
+	// if get the duplicate rpc, return result without the participation of raft layer
+	if request.Op != OpGet && kv.isDuplicateRequest(request.ClientId, request.CommandId) {
+		lastReply := kv.lastOperations[request.ClientId].LastReply
+		reply.Value, reply.Err = lastReply.Value, lastReply.Err
+		kv.mu.RUnlock()
+		return
+	}
+	// 
+	if !kv.canServe(key2shard(request.Key)) {
+		reply.Err = ErrWrongGroup
+		kv.mu.RUnlock()
+		return
+	}
+	kv.mu.RUnlock()
+	// fmt.Printf("command here\n")
+	kv.Execute(NewOperationCommand(request), reply)
 }
 
-type ShardKV struct {
-	mu           sync.Mutex
-	me           int
-	rf           *raft.Raft
-	applyCh      chan raft.ApplyMsg
-	make_end     func(string) *labrpc.ClientEnd
-	gid          int
-	masters      []*labrpc.ClientEnd
-	maxraftstate int // snapshot if log grows this big
-
-	// Your definitions here.
+func (kv *ShardKV) Serve(action func(), timeout time.Duration) {
+	for kv.killed() == false {
+		if _, isLeader := kv.rf.GetState(); isLeader {
+			action()
+		}
+		time.Sleep(timeout)
+	}
 }
 
+// a dedicated applier goroutine to apply committed entries to stateMachine, take snapshot and apply snapshot from raft
+func (kv *ShardKV) applier() {
+	for kv.killed() == false {
+		select {
+		case msg := <-kv.applyCh:
+			if msg.CommandValid {
+				kv.mu.Lock()
+				if msg.CommandIndex <= kv.lastApplied {
+					kv.mu.Unlock()
+					continue
+				}
+				kv.lastApplied = msg.CommandIndex
 
-func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
+				var reply *CommandReply
+				cmd := msg.Command.(Command)
+				switch cmd.Op {
+				case Operation:
+					operation := cmd.Data.(CommandRequest)
+					reply = kv.applyOperation(&msg, &operation)
+				case Configuration:
+					nextConfig := cmd.Data.(shardmaster.Config)
+					reply = kv.applyConfiguration(&nextConfig)
+				case InsertShards:
+					shardsInfo := cmd.Data.(ShardOperationReply)
+					reply = kv.applyInsertShards(&shardsInfo)
+				case DeleteShards:
+					shardsInfo := cmd.Data.(ShardOperationRequest)
+					reply = kv.applyDeleteShards(&shardsInfo)
+				case EmptyEntry:
+					reply = kv.applyEmptyEntry()
+				}
+				
+				// only notify related channel for currentTerm's log when the node is leader
+				if currentTerm, isLeader := kv.rf.GetState(); isLeader && msg.CommandTerm == currentTerm {
+					ch := kv.getNotifyChan(msg.CommandIndex)
+					ch <- reply
+				}
+
+				needSnapshot := kv.needSnapshot()
+				if needSnapshot {
+					kv.takeSnapshot(msg.CommandIndex)
+				}
+				kv.mu.Unlock()
+			} else if msg.SnapshotValid {
+				kv.mu.Lock()
+				if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+					kv.restoreSnapshot(msg.Snapshot)
+					kv.lastApplied = msg.SnapshotIndex
+				}
+				kv.mu.Unlock()
+			} else {
+				fmt.Println("run into wrong state in applier")
+			}
+		}
+	}
 }
 
-func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// Your code here.
-}
 
 //
 // the tester calls Kill() when a ShardKV instance won't
@@ -44,10 +109,13 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 // turn off debug output from this instance.
 //
 func (kv *ShardKV) Kill() {
+	atomic.StoreInt32(&kv.dead, 1)
 	kv.rf.Kill()
-	// Your code here, if desired.
 }
 
+func (kv *ShardKV) killed() bool {
+	return atomic.LoadInt32(&kv.dead) == 1
+}
 
 //
 // servers[] contains the ports of the servers in this group.
@@ -80,23 +148,48 @@ func (kv *ShardKV) Kill() {
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int, gid int, masters []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *ShardKV {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	labgob.Register(Op{})
+	labgob.Register(Command{})
+	labgob.Register(ShardOperationRequest{})
+	labgob.Register(ShardOperationReply{})
+	labgob.Register(shardmaster.Config{})
+	labgob.Register(CommandRequest{})
 
-	kv := new(ShardKV)
-	kv.me = me
-	kv.maxraftstate = maxraftstate
-	kv.make_end = make_end
-	kv.gid = gid
-	kv.masters = masters
+	applyCh := make(chan raft.ApplyMsg)
 
-	// Your initialization code here.
+	kv := &ShardKV {
+		maxRaftState: 	maxraftstate,
+		makeEnd:		make_end,
+		gid:			gid,
+		sm:				shardmaster.MakeClerk(masters),
+		applyCh:		applyCh,
+		dead:			0,
+		rf:				raft.Make(servers, me, persister, applyCh),
 
-	// Use something like this to talk to the shardmaster:
-	// kv.mck = shardmaster.MakeClerk(kv.masters)
+		lastApplied:	0,
+		currentConfig:	shardmaster.DefaultConfig(),
+		lastConfig:		shardmaster.DefaultConfig(),
+		notifyChans:	make(map[int]chan *CommandReply),
+		stateMachines:	make(map[int]*Shard),
+		lastOperations:	make(map[int64]OperationContext),
+	}
 
-	kv.applyCh = make(chan raft.ApplyMsg)
-	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
+	kv.restoreSnapshot(persister.ReadSnapshot())
 
+	// start a goroutine to apply committed to stateMachine
+	go kv.applier()
+	
+	// start a goroutine to update config
+	go kv.Serve(kv.configureAction, ConfigureTimeout)
+
+	// start a goroutine to check migration
+	go kv.Serve(kv.migrationAction, MigrationTimeout)
+
+	// start a goroutine to check gc
+	go kv.Serve(kv.gcAction, GCTimeout)
+
+	// start a goroutine to solve empty entry problems
+	go kv.Serve(kv.checkEntryInCurrentTermAction, EmptyEntryDetectorTimeout)
 
 	return kv
 }
+
