@@ -212,3 +212,10 @@ func (rf *Raft) CondInstallSnapshot(term int, index int, snapshot []byte) bool {
 	rf.persister.SaveStateAndSnapshot(rf.encodeState(), snapshot)
 	return true
 }
+
+// used by upper layer to detect whether there are any logs in current term
+func (rf *Raft) HasLogInCurrentTerm() bool {
+	rf.mu.RLock()
+	defer rf.mu.RUnlock()
+	return rf.getLastLog().Term == rf.currentTerm
+}
