@@ -112,8 +112,7 @@ func (rf *Raft) startElection() {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
 				DPrintf("{Node: %v} receive reply: %v from {Node: %v} in term %v", rf.me, reply, peer, request.Term)
-				// avoid current node receive heartbeat or 
-				// already become follower before send request
+				// avoid current node receive heartbeat or already become follower before send request
 				if rf.currentTerm == request.Term && rf.state == Candidate {
 					if reply.VoteGranted {
 						grantedCount += 1
@@ -186,7 +185,6 @@ func (rf *Raft) AppendEntries(request *AppendEntriesRequest, reply *AppendEntrie
 
 	rf.ChangeState(Follower)
 	rf.electionTimer.Reset(ElectionTimeout())
-
 
 	// drop unexpected logs
 	if request.PrevLogIndex < rf.logs[0].Index {

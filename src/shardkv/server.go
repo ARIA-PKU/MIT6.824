@@ -16,7 +16,6 @@ import(
 // deal with the command from client
 func (kv *ShardKV) Command(request *CommandRequest, reply *CommandReply) {
 	kv.mu.RLock()
-	// fmt.Printf("command here1\n")
 	// if get the duplicate rpc, return result without the participation of raft layer
 	if request.Op != OpGet && kv.isDuplicateRequest(request.ClientId, request.CommandId) {
 		lastReply := kv.lastOperations[request.ClientId].LastReply
@@ -31,7 +30,6 @@ func (kv *ShardKV) Command(request *CommandRequest, reply *CommandReply) {
 		return
 	}
 	kv.mu.RUnlock()
-	// fmt.Printf("command here\n")
 	kv.Execute(NewOperationCommand(request), reply)
 }
 

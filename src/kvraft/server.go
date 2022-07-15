@@ -38,7 +38,6 @@ func (kv *KVServer) coordinator() {
 				}
 				
 				if kv.needSnapshot() {
-					// fmt.Printf("take snapshot")
 					kv.takeSnapshot(msg.CommandIndex)
 				}
 

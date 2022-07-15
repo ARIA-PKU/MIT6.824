@@ -1,13 +1,8 @@
 package kvraft
 
 import (
-	// "../labgob"
-	// "../labrpc"
-	// "log"
 	"../raft"
 	"sync"
-	// "sync/atomic"
-	// "time"
 )
 
 type KVServer struct {

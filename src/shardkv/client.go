@@ -93,10 +93,7 @@ func (ck *Clerk) Command(request *CommandRequest) string {
 	for {
 		shard := key2shard(request.Key)
 		gid := ck.config.Shards[shard]
-		// fmt.Printf("Shard : %v and gid : %v\n", shard, gid)
-		// fmt.Printf("%v", ck.config)
 		if servers, ok := ck.config.Groups[gid]; ok {
-			// fmt.Println("here ok")
 			if _, ok = ck.leaderIds[gid]; !ok {
 				ck.leaderIds[gid] = 0
 			}
@@ -109,13 +106,11 @@ func (ck *Clerk) Command(request *CommandRequest) string {
 					ck.commandId ++
 					return reply.Value
 				} else if ok && reply.Err == ErrWrongGroup {
-					// fmt.Printf("ErrWrongGroup\n")
 					// the shard's group may have changed
 					break
 				} else {
 					newLeaderId = (newLeaderId + 1) % len(servers)
 					if newLeaderId == preLeaderId {
-						// fmt.Printf("find leader\n")
 						break
 					}
 					continue

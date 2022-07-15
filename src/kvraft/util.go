@@ -57,13 +57,9 @@ func (kv *KVServer) restoreSnapshot(snapshot []byte) {
 	d := labgob.NewDecoder(r)
 	var stateMachine MemoryKV
 	var lastOperation map[int64]OperationHistory
-	// d.Decode(&stateMachine)
-	// d.Decode(&lastOperation)
 	if d.Decode(&stateMachine) != nil ||
 		d.Decode(&lastOperation) != nil {
 		DPrintf("{Node %v} restores snapshot failed", kv.rf.Me())
-		// fmt.Printf("{Node %v} restores snapshot failed\n", kv.rf.Me())
 	}
-	// fmt.Printf("{Node %v} restores snapshot successfully\n", kv.rf.Me())
 	kv.stateMachine, kv.lastOperation = &stateMachine, lastOperation
 }

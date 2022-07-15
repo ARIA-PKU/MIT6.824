@@ -78,7 +78,6 @@ func (kv *ShardKV) configureAction() {
 
 	currentConfigNum := kv.currentConfig.Num
 	kv.mu.RUnlock()
-	// fmt.Printf("configure\n")
 	if canGetNextConfig {
 		nextConfig := kv.sm.Query(currentConfigNum + 1)
 		// fmt.Printf("nextConfig: %v and currentNum: %v\n", nextConfig, currentConfigNum)
@@ -263,7 +262,6 @@ func (kv *ShardKV) updateShardStatus(nextConfig *shardmaster.Config) {
 
 
 func (kv *ShardKV) applyConfiguration(nextConfig *shardmaster.Config) *CommandReply {
-	// fmt.Printf("apply here\n")
 	if nextConfig.Num == kv.currentConfig.Num + 1 {
 		kv.updateShardStatus(nextConfig)
 		kv.lastConfig = kv.currentConfig
@@ -284,7 +282,6 @@ func (kv *ShardKV) applyInsertShards(shardsInfo *ShardOperationReply) *CommandRe
 				}
 				shard.Status = GCing
 			} else {
-				// fmt.Println("Encounter duplicated shards")
 				break
 			}
 		}
